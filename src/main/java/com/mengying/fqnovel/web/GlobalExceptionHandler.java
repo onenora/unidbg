@@ -4,6 +4,7 @@ import com.mengying.fqnovel.service.AutoRestartService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.ModelAndView;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -115,6 +117,31 @@ public class GlobalExceptionHandler {
         }
     }
 
+    /**
+     * 异步响应写回阶段，若客户端已经断开，Spring 会抛出 AsyncRequestNotUsableException。
+     * 该场景属于常见网络噪音，不应继续转发 /error，否则会触发重复异常日志。
+     */
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleAsyncRequestNotUsable(AsyncRequestNotUsableException ex) {
+        if (log.isDebugEnabled()) {
+            log.debug("异步响应不可用（客户端可能已断开）: {}", ex.getMessage());
+        }
+    }
+
+    /**
+     * JSON 写回阶段常会包裹一层 HttpMessageNotWritableException。
+     * 若根因是客户端断开，则按噪音处理；否则继续抛出交给统一兜底。
+     */
+    @ExceptionHandler(HttpMessageNotWritableException.class)
+    public void handleMessageNotWritable(HttpMessageNotWritableException ex) throws HttpMessageNotWritableException {
+        if (!isClientAbortLike(ex)) {
+            throw ex;
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("响应写回失败（客户端已断开）: {}", ex.getMessage());
+        }
+    }
+
     @ExceptionHandler(Exception.class)
     public Object handleException(Exception ex, HttpServletRequest request) {
         log.error("全局异常捕获: {}", ex.getMessage(), ex);
@@ -123,6 +150,36 @@ public class GlobalExceptionHandler {
 
     private static String messageOrDefault(String message, String defaultMessage) {
         return Objects.requireNonNullElse(message, defaultMessage);
+    }
+
+    private static boolean isClientAbortLike(Throwable throwable) {
+        return hasCause(throwable, SocketException.class)
+            || hasCause(throwable, EOFException.class)
+            || hasCause(throwable, ClosedChannelException.class)
+            || hasCause(throwable, AsyncRequestNotUsableException.class)
+            || hasCauseClassName(throwable, "org.apache.catalina.connector.ClientAbortException");
+    }
+
+    private static boolean hasCause(Throwable throwable, Class<? extends Throwable> type) {
+        Throwable cursor = throwable;
+        while (cursor != null) {
+            if (type.isInstance(cursor)) {
+                return true;
+            }
+            cursor = cursor.getCause();
+        }
+        return false;
+    }
+
+    private static boolean hasCauseClassName(Throwable throwable, String className) {
+        Throwable cursor = throwable;
+        while (cursor != null) {
+            if (cursor.getClass().getName().equals(className)) {
+                return true;
+            }
+            cursor = cursor.getCause();
+        }
+        return false;
     }
 
     private static Object buildError(HttpStatus status, String message, HttpServletRequest request) {
