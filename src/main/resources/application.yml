@@ -7,6 +7,8 @@ spring:
     banner-mode: "off"
   application:
     name: unidbg-boot-server
+  mvc:
+    throw-exception-if-no-handler-found: true
   webmvc:
     async:
       request-timeout: 300s
@@ -48,7 +50,7 @@ fq:
     auto-restart-self-heal-cooldown-ms: 180000
   api:
     base-url: "https://api5-normal-sinfonlineb.fqnovel.com"
-    user-agent: "com.dragon.read.oversea.gp/68132 (Linux; U; Android 13; zh_CN; Sirius; Build/V417IR;tt-ok/3.12.13.4-tiktok)"
+    # 顶层运行设备未显式配置时，会从设备池首项或 device-pool-startup-name 指定项继承
 
     device-pool-size: 3
     device-pool-shuffle-on-startup: true
@@ -58,6 +60,7 @@ fq:
     device-pool:
       - name: dev01
         user-agent: "com.dragon.read.oversea.gp/68132 (Linux; U; Android 13; zh_CN; Sirius; Build/V417IR;tt-ok/3.12.13.4-tiktok)"
+        cookie: "store-region=cn-zj; store-region-src=did; install_id=573270579220059"
         device:
           aid: '1967'
           cdid: 9daf93bf-4dcf-417e-8795-20284ad26a1f
@@ -76,6 +79,7 @@ fq:
           os-api: '33'
       - name: dev02
         user-agent: "com.dragon.read.oversea.gp/68132 (Linux; U; Android 13; zh_CN; WLZ-AN00; Build/V433IR;tt-ok/3.12.13.4-tiktok)"
+        cookie: "store-region=cn-zj; store-region-src=did; install_id=670078579016233"
         device:
           aid: '1967'
           cdid: 5566b484-82f9-4cef-880d-60ca354e6a99
@@ -94,6 +98,7 @@ fq:
           os-api: '32'
       - name: dev03
         user-agent: "com.dragon.read.oversea.gp/68132 (Linux; U; Android 14; zh_CN; SM-S9110; Build/UP1A.231005.007;tt-ok/3.12.13.4-tiktok)"
+        cookie: "store-region=cn-zj; store-region-src=did; install_id=824916735312058"
         device:
           aid: '1967'
           cdid: a3e71c92-5f8a-4d3b-b6e1-48c0d7f3a215

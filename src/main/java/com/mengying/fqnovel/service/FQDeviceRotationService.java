@@ -1,12 +1,10 @@
 package com.mengying.fqnovel.service;
 
 import com.mengying.fqnovel.config.FQApiProperties;
-import com.mengying.fqnovel.dto.DeviceInfo;
 import com.mengying.fqnovel.dto.FQSearchRequest;
 import com.mengying.fqnovel.dto.FQSearchResponse;
-import com.mengying.fqnovel.dto.FqVariable;
-import com.mengying.fqnovel.utils.FQApiUtils;
 import com.mengying.fqnovel.utils.CookieUtils;
+import com.mengying.fqnovel.utils.FQApiUtils;
 import com.mengying.fqnovel.utils.FQSearchResponseParser;
 import com.mengying.fqnovel.utils.Texts;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -69,14 +67,6 @@ public class FQDeviceRotationService {
 
     private static FQApiProperties.Device runtimeDevice(FQApiProperties.RuntimeProfile runtimeProfile) {
         return runtimeProfile == null ? null : runtimeProfile.getDeviceUnsafe();
-    }
-
-    private static String runtimeUserAgent(FQApiProperties.RuntimeProfile runtimeProfile) {
-        return runtimeProfile == null ? null : runtimeProfile.getUserAgent();
-    }
-
-    private static String runtimeCookie(FQApiProperties.RuntimeProfile runtimeProfile) {
-        return runtimeProfile == null ? null : runtimeProfile.getCookie();
     }
 
     @PostConstruct
@@ -178,10 +168,9 @@ public class FQDeviceRotationService {
             searchRequest.setIsFirstEnterSearch(true);
             searchRequestEnricher.enrich(searchRequest);
 
-            FqVariable var = new FqVariable(fqApiProperties);
             String url = fqApiUtils.getSearchApiBaseUrl()
                 + "/reading/bookapi/search/tab/v";
-            Map<String, String> params = fqApiUtils.buildSearchParams(var, searchRequest);
+            Map<String, String> params = fqApiUtils.buildSearchParams(searchRequest);
             String fullUrl = fqApiUtils.buildUrlWithParams(url, params);
 
             Map<String, String> headers = fqApiUtils.buildSearchHeaders();
@@ -220,9 +209,9 @@ public class FQDeviceRotationService {
     /**
      * 尝试旋转设备（带冷却时间，避免并发风暴）。
      *
-     * @return 旋转成功返回新设备信息，否则返回 null
+     * @return true 表示完成设备切换，false 表示未切换
      */
-    public DeviceInfo rotateIfNeeded(String reason) {
+    public boolean rotateIfNeeded(String reason) {
         return rotateInternal(reason, false);
     }
 
@@ -230,15 +219,15 @@ public class FQDeviceRotationService {
      * 强制旋转设备（忽略冷却时间），用于单次请求内的自愈流程。
      * 仍然会加锁，避免并发下“乱序切换”。
      */
-    public DeviceInfo forceRotate(String reason) {
+    public boolean forceRotate(String reason) {
         return rotateInternal(reason, true);
     }
 
-    private DeviceInfo rotateInternal(String reason, boolean ignoreCooldown) {
+    private boolean rotateInternal(String reason, boolean ignoreCooldown) {
         long now = System.currentTimeMillis();
         long cooldownMs = Math.max(0L, fqApiProperties.getDeviceRotateCooldownMs());
         if (isInRotateCooldown(ignoreCooldown, now, cooldownMs)) {
-            return null;
+            return false;
         }
 
         lock.lock();
@@ -246,28 +235,27 @@ public class FQDeviceRotationService {
             now = System.currentTimeMillis();
             cooldownMs = Math.max(0L, fqApiProperties.getDeviceRotateCooldownMs());
             if (isInRotateCooldown(ignoreCooldown, now, cooldownMs)) {
-                return null;
+                return false;
             }
 
-            DeviceInfo deviceInfo = rotateFromConfiguredPool(reason);
-            if (deviceInfo == null) {
+            if (!rotateFromConfiguredPool(reason)) {
                 log.warn("检测到异常，但设备池中无可切换设备：原因={}", reason);
-                return null;
+                return false;
             }
 
             lastRotateAtMs = now;
             refreshRegisterKeyAfterRotation();
 
-            return deviceInfo;
+            return true;
         } finally {
             lock.unlock();
         }
     }
 
-    private DeviceInfo rotateFromConfiguredPool(String reason) {
+    private boolean rotateFromConfiguredPool(String reason) {
         List<FQApiProperties.DeviceProfile> pool = fqApiProperties.getDevicePool();
         if (pool == null || pool.isEmpty()) {
-            return null;
+            return false;
         }
 
         FQApiProperties.RuntimeProfile currentRuntime = fqApiProperties.getRuntimeProfile();
@@ -297,7 +285,7 @@ public class FQDeviceRotationService {
         }
 
         if (profile == null) {
-            return null;
+            return false;
         }
 
         applyDeviceProfile(profile);
@@ -308,36 +296,7 @@ public class FQDeviceRotationService {
         log.warn("检测到异常，已切换设备：序号={}, 设备名={}, 设备ID={}, 安装ID={}, 原因={}",
             idx, name, deviceId, installId, reason);
 
-        return toDeviceInfo(profile);
-    }
-
-    private DeviceInfo toDeviceInfo(FQApiProperties.DeviceProfile profile) {
-        if (profile == null) {
-            return null;
-        }
-        FQApiProperties.Device device = profile.getDevice();
-        String normalizedCookie = device == null
-            ? profile.getCookie()
-            : CookieUtils.normalizeInstallId(profile.getCookie(), device.getInstallId());
-        return DeviceInfo.builder()
-            .userAgent(profile.getUserAgent())
-            .cookie(normalizedCookie)
-            .aid(deviceField(device, FQApiProperties.Device::getAid))
-            .cdid(deviceField(device, FQApiProperties.Device::getCdid))
-            .deviceBrand(deviceField(device, FQApiProperties.Device::getDeviceBrand))
-            .deviceId(deviceField(device, FQApiProperties.Device::getDeviceId))
-            .deviceType(deviceField(device, FQApiProperties.Device::getDeviceType))
-            .dpi(deviceField(device, FQApiProperties.Device::getDpi))
-            .hostAbi(deviceField(device, FQApiProperties.Device::getHostAbi))
-            .installId(deviceField(device, FQApiProperties.Device::getInstallId))
-            .resolution(deviceField(device, FQApiProperties.Device::getResolution))
-            .romVersion(deviceField(device, FQApiProperties.Device::getRomVersion))
-            .updateVersionCode(deviceField(device, FQApiProperties.Device::getUpdateVersionCode))
-            .versionCode(deviceField(device, FQApiProperties.Device::getVersionCode))
-            .versionName(deviceField(device, FQApiProperties.Device::getVersionName))
-            .osVersion(deviceField(device, FQApiProperties.Device::getOsVersion))
-            .osApi(parseIntOrNull(deviceField(device, FQApiProperties.Device::getOsApi)))
-            .build();
+        return true;
     }
 
     private static String deviceField(FQApiProperties.Device device, Function<FQApiProperties.Device, String> getter) {
@@ -360,18 +319,6 @@ public class FQDeviceRotationService {
         return deviceField(device, FQApiProperties.Device::getInstallId);
     }
 
-    private Integer parseIntOrNull(String value) {
-        try {
-            String v = Texts.trimToNull(value);
-            if (v == null) {
-                return null;
-            }
-            return Integer.valueOf(v);
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
     private void applyDeviceProfile(FQApiProperties.DeviceProfile profile) {
         if (profile == null) {
             return;
@@ -391,11 +338,16 @@ public class FQDeviceRotationService {
         copyDeviceFields(src, newDevice);
 
         FQApiProperties.RuntimeProfile currentRuntime = fqApiProperties.getRuntimeProfile();
-        String fallbackUserAgent = runtimeUserAgent(currentRuntime);
-        String fallbackCookie = runtimeCookie(currentRuntime);
-
-        String userAgent = Texts.defaultIfBlank(profile.getUserAgent(), fallbackUserAgent);
-        String cookie = Texts.defaultIfBlank(profile.getCookie(), fallbackCookie);
+        String userAgent = Texts.trimToNull(profile.getUserAgent());
+        String cookie = Texts.trimToNull(profile.getCookie());
+        if (userAgent == null || cookie == null) {
+            log.warn("设备配置缺少完整请求指纹，跳过设备切换: profileName={}, userAgentPresent={}, cookiePresent={}, currentProfile={}",
+                profileName(profile),
+                userAgent != null,
+                cookie != null,
+                currentRuntime == null ? null : currentProfileName);
+            return;
+        }
         String normalizedCookie = CookieUtils.normalizeInstallId(cookie, newDevice.getInstallId());
 
         fqApiProperties.applyRuntimeProfile(userAgent, normalizedCookie, newDevice);

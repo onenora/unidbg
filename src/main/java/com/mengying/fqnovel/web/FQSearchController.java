@@ -4,7 +4,7 @@ import com.mengying.fqnovel.dto.FQDirectoryRequest;
 import com.mengying.fqnovel.dto.FQDirectoryResponse;
 import com.mengying.fqnovel.dto.FQNovelResponse;
 import com.mengying.fqnovel.dto.FQSearchRequest;
-import com.mengying.fqnovel.dto.FQSearchResponseSimple;
+import com.mengying.fqnovel.dto.FQSearchResponse;
 import com.mengying.fqnovel.service.FQDirectoryService;
 import com.mengying.fqnovel.service.FQSearchService;
 import com.mengying.fqnovel.utils.Texts;
@@ -53,7 +53,7 @@ public class FQSearchController {
      * @return 搜索结果
      */
     @GetMapping("/search")
-    public CompletableFuture<FQNovelResponse<FQSearchResponseSimple>> searchBooks(
+    public CompletableFuture<FQNovelResponse<FQSearchResponse>> searchBooks(
             @RequestParam String key,
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "20") Integer size,
@@ -100,16 +100,15 @@ public class FQSearchController {
         return fqSearchService.searchBooksEnhanced(searchRequest)
             .thenApply(response -> {
                 if (response == null) {
-                    return FQNovelResponse.<FQSearchResponseSimple>error("搜索失败: 空响应");
+                    return FQNovelResponse.<FQSearchResponse>error("搜索失败: 空响应");
                 }
                 if (response.code() == null) {
-                    return FQNovelResponse.<FQSearchResponseSimple>error("搜索失败: 响应码为空");
+                    return FQNovelResponse.<FQSearchResponse>error("搜索失败: 响应码为空");
                 }
                 if (response.code() != 0) {
-                    return FQNovelResponse.<FQSearchResponseSimple>error(response.code(), response.message());
+                    return FQNovelResponse.<FQSearchResponse>error(response.code(), response.message());
                 }
-                FQSearchResponseSimple simple = FQSearchResponseSimple.fromFull(response.data());
-                return FQNovelResponse.success(simple);
+                return FQNovelResponse.success(response.data());
             });
     }
 

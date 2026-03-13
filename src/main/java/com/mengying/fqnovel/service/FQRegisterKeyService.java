@@ -4,7 +4,6 @@ import com.mengying.fqnovel.config.FQApiProperties;
 import com.mengying.fqnovel.dto.FqRegisterKeyPayload;
 import com.mengying.fqnovel.dto.FqRegisterKeyPayloadResponse;
 import com.mengying.fqnovel.dto.FqRegisterKeyResponse;
-import com.mengying.fqnovel.dto.FqVariable;
 import com.mengying.fqnovel.utils.FQApiUtils;
 import com.mengying.fqnovel.utils.Texts;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -158,11 +157,9 @@ public class FQRegisterKeyService {
      * @return RegisterKey响应
      */
     private FqRegisterKeyResponse fetchRegisterKey() throws Exception {
-        FqVariable var = new FqVariable(fqApiProperties);
-
         // 使用工具类构建URL和参数
         String url = fqApiUtils.getBaseUrl() + REGISTER_KEY_PATH;
-        Map<String, String> params = fqApiUtils.buildCommonApiParams(var);
+        Map<String, String> params = fqApiUtils.buildCommonApiParams();
         String fullUrl = fqApiUtils.buildUrlWithParams(url, params);
 
         // 生成统一的时间戳
@@ -172,7 +169,7 @@ public class FQRegisterKeyService {
         Map<String, String> headers = fqApiUtils.buildRegisterKeyHeaders(currentTime);
 
         // 创建请求载荷
-        FqRegisterKeyPayload payload = buildRegisterKeyPayload(var);
+        FqRegisterKeyPayload payload = buildRegisterKeyPayload();
 
         log.debug("发送registerkey请求到: {}", fullUrl);
         log.debug("请求时间戳: {}", currentTime);
@@ -217,9 +214,9 @@ public class FQRegisterKeyService {
         return FqCrypto.getRealKey(registerKeyResponse.data().key());
     }
 
-    private FqRegisterKeyPayload buildRegisterKeyPayload(FqVariable var) throws Exception {
+    private FqRegisterKeyPayload buildRegisterKeyPayload() throws Exception {
         FqCrypto crypto = new FqCrypto(FqCrypto.REG_KEY);
-        String content = crypto.newRegisterKeyContent(var.getServerDeviceId(), REGISTER_KEY_CONTENT_VERSION);
+        String content = crypto.newRegisterKeyContent(fqApiUtils.getServerDeviceId(), REGISTER_KEY_CONTENT_VERSION);
         return new FqRegisterKeyPayload(content, REGISTER_KEY_PAYLOAD_KEYVER);
     }
 

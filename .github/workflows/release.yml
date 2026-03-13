@@ -30,12 +30,6 @@ jobs:
           java-version: "25"
           cache: maven
 
-      - name: Set up Maven 3.9.12
-        run: |
-          wget -q https://archive.apache.org/dist/maven/maven-3/3.9.12/binaries/apache-maven-3.9.12-bin.tar.gz
-          tar xzf apache-maven-3.9.12-bin.tar.gz
-          echo "$GITHUB_WORKSPACE/apache-maven-3.9.12/bin" >> $GITHUB_PATH
-
       - name: Verify Maven version
         run: mvn -version
 

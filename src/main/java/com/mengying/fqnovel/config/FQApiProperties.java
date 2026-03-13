@@ -22,20 +22,20 @@ public class FQApiProperties {
     /**
      * API基础URL
      */
-    private String baseUrl = "https://api5-normal-sinfonlineb.fqnovel.com";
+    private String baseUrl;
     
     /**
-     * 默认User-Agent
+     * 运行时 User-Agent；未显式配置时可从设备池启动基线继承。
      */
-    private String userAgent = "com.dragon.read.oversea.gp/68132 (Linux; U; Android 10; zh_CN; OnePlus11; Build/V291IR;tt-ok/3.12.13.4-tiktok)";
+    private String userAgent;
     
     /**
-     * Cookie配置
+     * 运行时 Cookie；未显式配置时可从设备池启动基线继承。
      */
-    private String cookie = "store-region=cn-zj; store-region-src=did; install_id=933935730456617";
+    private String cookie;
     
     /**
-     * 设备参数配置
+     * 运行时设备参数；未显式配置时可从设备池启动基线继承。
      */
     private Device device = new Device();
 
@@ -121,6 +121,7 @@ public class FQApiProperties {
 
     @PostConstruct
     public synchronized void initRuntimeProfile() {
+        inheritRuntimeDefaultsFromDevicePool();
         refreshRuntimeProfileLocked();
         validateRuntimeConfiguration();
     }
@@ -132,6 +133,7 @@ public class FQApiProperties {
         }
         synchronized (this) {
             if (runtimeProfile == null) {
+                inheritRuntimeDefaultsFromDevicePool();
                 refreshRuntimeProfileLocked();
             }
             return runtimeProfile;
@@ -185,6 +187,23 @@ public class FQApiProperties {
         this.runtimeProfile = RuntimeProfile.of(this.userAgent, this.cookie, this.device);
     }
 
+    private void inheritRuntimeDefaultsFromDevicePool() {
+        DeviceProfile bootstrapProfile = resolveBootstrapProfile();
+        if (bootstrapProfile == null) {
+            return;
+        }
+
+        this.userAgent = Texts.defaultIfBlank(
+            normalizeNullable(this.userAgent),
+            normalizeNullable(bootstrapProfile.getUserAgent())
+        );
+        this.cookie = Texts.defaultIfBlank(
+            normalizeNullable(this.cookie),
+            normalizeNullable(bootstrapProfile.getCookie())
+        );
+        this.device = mergeDevice(this.device, bootstrapProfile.getDevice());
+    }
+
     private static String normalizeNullable(String value) {
         return Texts.trimToNull(value);
     }
@@ -217,6 +236,15 @@ public class FQApiProperties {
         return target;
     }
 
+    private static Device mergeDevice(Device primary, Device fallback) {
+        Device target = new Device();
+        mergeIdentityFields(primary, fallback, target);
+        mergeVersionFields(primary, fallback, target);
+        mergeHardwareFields(primary, fallback, target);
+        mergeSystemFields(primary, fallback, target);
+        return target;
+    }
+
     private static void copyIdentityFields(Device source, Device target) {
         copyIfText(source.getCdid(), target::setCdid);
         copyIfText(source.getInstallId(), target::setInstallId);
@@ -224,10 +252,23 @@ public class FQApiProperties {
         copyIfText(source.getAid(), target::setAid);
     }
 
+    private static void mergeIdentityFields(Device primary, Device fallback, Device target) {
+        mergeIfText(primary == null ? null : primary.getCdid(), fallback == null ? null : fallback.getCdid(), target::setCdid);
+        mergeIfText(primary == null ? null : primary.getInstallId(), fallback == null ? null : fallback.getInstallId(), target::setInstallId);
+        mergeIfText(primary == null ? null : primary.getDeviceId(), fallback == null ? null : fallback.getDeviceId(), target::setDeviceId);
+        mergeIfText(primary == null ? null : primary.getAid(), fallback == null ? null : fallback.getAid(), target::setAid);
+    }
+
     private static void copyVersionFields(Device source, Device target) {
         copyIfText(source.getVersionCode(), target::setVersionCode);
         copyIfText(source.getVersionName(), target::setVersionName);
         copyIfText(source.getUpdateVersionCode(), target::setUpdateVersionCode);
+    }
+
+    private static void mergeVersionFields(Device primary, Device fallback, Device target) {
+        mergeIfText(primary == null ? null : primary.getVersionCode(), fallback == null ? null : fallback.getVersionCode(), target::setVersionCode);
+        mergeIfText(primary == null ? null : primary.getVersionName(), fallback == null ? null : fallback.getVersionName(), target::setVersionName);
+        mergeIfText(primary == null ? null : primary.getUpdateVersionCode(), fallback == null ? null : fallback.getUpdateVersionCode(), target::setUpdateVersionCode);
     }
 
     private static void copyHardwareFields(Device source, Device target) {
@@ -238,10 +279,24 @@ public class FQApiProperties {
         copyIfText(source.getHostAbi(), target::setHostAbi);
     }
 
+    private static void mergeHardwareFields(Device primary, Device fallback, Device target) {
+        mergeIfText(primary == null ? null : primary.getDeviceType(), fallback == null ? null : fallback.getDeviceType(), target::setDeviceType);
+        mergeIfText(primary == null ? null : primary.getDeviceBrand(), fallback == null ? null : fallback.getDeviceBrand(), target::setDeviceBrand);
+        mergeIfText(primary == null ? null : primary.getResolution(), fallback == null ? null : fallback.getResolution(), target::setResolution);
+        mergeIfText(primary == null ? null : primary.getDpi(), fallback == null ? null : fallback.getDpi(), target::setDpi);
+        mergeIfText(primary == null ? null : primary.getHostAbi(), fallback == null ? null : fallback.getHostAbi(), target::setHostAbi);
+    }
+
     private static void copySystemFields(Device source, Device target) {
         copyIfText(source.getRomVersion(), target::setRomVersion);
         copyIfText(source.getOsVersion(), target::setOsVersion);
         copyIfText(source.getOsApi(), target::setOsApi);
+    }
+
+    private static void mergeSystemFields(Device primary, Device fallback, Device target) {
+        mergeIfText(primary == null ? null : primary.getRomVersion(), fallback == null ? null : fallback.getRomVersion(), target::setRomVersion);
+        mergeIfText(primary == null ? null : primary.getOsVersion(), fallback == null ? null : fallback.getOsVersion(), target::setOsVersion);
+        mergeIfText(primary == null ? null : primary.getOsApi(), fallback == null ? null : fallback.getOsApi(), target::setOsApi);
     }
 
     private static void copyIfText(String value, Consumer<String> setter) {
@@ -255,7 +310,39 @@ public class FQApiProperties {
         setter.accept(trimmed);
     }
 
+    private static void mergeIfText(String primaryValue, String fallbackValue, Consumer<String> setter) {
+        if (setter == null) {
+            return;
+        }
+        String merged = Texts.defaultIfBlank(normalizeNullable(primaryValue), normalizeNullable(fallbackValue));
+        if (merged != null) {
+            setter.accept(merged);
+        }
+    }
+
+    private DeviceProfile resolveBootstrapProfile() {
+        if (devicePool == null || devicePool.isEmpty()) {
+            return null;
+        }
+
+        int limit = Math.max(1, Math.min(devicePoolSize, devicePool.size()));
+        String startupName = normalizeNullable(this.devicePoolStartupName);
+        if (startupName != null) {
+            for (int i = 0; i < limit; i++) {
+                DeviceProfile profile = devicePool.get(i);
+                if (startupName.equals(normalizeNullable(profile == null ? null : profile.getName()))) {
+                    return profile;
+                }
+            }
+        }
+
+        return devicePool.get(0);
+    }
+
     private void validateRuntimeConfiguration() {
+        requireTextValue(this.baseUrl, "fq.api.base-url");
+        requireTextValue(this.userAgent, "fq.api.user-agent");
+        requireTextValue(this.cookie, "fq.api.cookie");
         validateRequiredDevice(this.device, DEVICE_CONFIG_PREFIX);
         validateDevicePool();
     }
@@ -275,6 +362,8 @@ public class FQApiProperties {
         if (profile == null) {
             throw new IllegalStateException("缺少设备池配置: " + prefix);
         }
+        requireTextValue(profile.getUserAgent(), prefix + ".user-agent");
+        requireTextValue(profile.getCookie(), prefix + ".cookie");
         Device profileDevice = profile.getDevice();
         if (profileDevice == null) {
             throw new IllegalStateException("缺少设备配置: " + prefix + ".device");
@@ -298,12 +387,18 @@ public class FQApiProperties {
         }
     }
 
+    private static void requireTextValue(String value, String fieldName) {
+        if (!Texts.hasText(value)) {
+            throw new IllegalStateException("缺少配置字段: " + fieldName);
+        }
+    }
+
     public String getBaseUrl() {
         return baseUrl;
     }
 
     public void setBaseUrl(String baseUrl) {
-        this.baseUrl = baseUrl;
+        this.baseUrl = normalizeNullable(baseUrl);
     }
 
     public Device getDevice() {
@@ -469,77 +564,77 @@ public class FQApiProperties {
         /**
          * 设备唯一标识符
          */
-        private String cdid = "17f05006-423a-4172-be4b-7d26a42f2f4a";
+        private String cdid;
         
         /**
          * 安装ID
          */
-        private String installId = "933935730456617";
+        private String installId;
         
         /**
          * 设备ID
          */
-        private String deviceId = "933935730452521";
+        private String deviceId;
         
         /**
          * 应用ID
          */
-        private String aid = "1967";
+        private String aid;
         
         /**
          * 版本代码
          */
-        private String versionCode = "68132";
+        private String versionCode;
         
         /**
          * 版本名称
          */
-        private String versionName = "6.8.1.32";
+        private String versionName;
         
         /**
          * 更新版本代码
          */
-        private String updateVersionCode = "68132";
+        private String updateVersionCode;
         
         /**
          * 设备类型
          */
-        private String deviceType = "OnePlus11";
+        private String deviceType;
         
         /**
          * 设备品牌
          */
-        private String deviceBrand = "OnePlus";
+        private String deviceBrand;
         
         /**
          * ROM版本
          */
-        private String romVersion = "V291IR+release-keys";
+        private String romVersion;
         
         /**
          * 分辨率
          */
-        private String resolution = "3200*1440";
+        private String resolution;
         
         /**
          * DPI
          */
-        private String dpi = "640";
+        private String dpi;
         
         /**
          * 主机ABI
          */
-        private String hostAbi = "arm64-v8a";
+        private String hostAbi;
 
         /**
          * Android 版本（例如 13）
          */
-        private String osVersion = "13";
+        private String osVersion;
 
         /**
          * Android API（例如 32）
          */
-        private String osApi = "32";
+        private String osApi;
 
         public String getCdid() {
             return cdid;

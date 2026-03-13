@@ -17,6 +17,7 @@ import java.nio.charset.Charset;
 public final class ConsoleNoiseFilter {
     private static final String PROP_FILTER_CONSOLE_NOISE = "fq.log.filterConsoleNoise";
     private static final String DEFAULT_FILTER_CONSOLE_NOISE = "true";
+    private static final String EMPTY_NATIVE_ERROR_LINE = "[main]E/:";
 
     private ConsoleNoiseFilter() {}
 
@@ -98,6 +99,11 @@ public final class ConsoleNoiseFilter {
             String trimmed = Texts.trimToNull(line);
             if (trimmed == null) {
                 return false;
+            }
+
+            // 仅过滤“空壳” native error 前缀行，避免误伤带正文的 E/: 输出。
+            if (EMPTY_NATIVE_ERROR_LINE.equals(trimmed)) {
+                return true;
             }
 
             // 典型噪音输出（来源：libmetasec_ml.so）

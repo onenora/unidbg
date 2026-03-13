@@ -1,19 +1,15 @@
 package com.mengying.fqnovel.service;
 
+import com.mengying.fqnovel.utils.GzipUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Base64;
-import java.util.zip.GZIPInputStream;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -229,40 +225,7 @@ public class FqCrypto {
     public static String decryptAndDecompressContent(String encryptedContent, String keyHex) throws Exception {
         FqCrypto crypto = getOrCreate(keyHex);
         byte[] decryptedBytes = crypto.decrypt(encryptedContent);
-        
-        // 检查是否是 gzip 压缩数据 (gzip 魔法数字: 0x1f, 0x8b)
-        if (decryptedBytes.length >= 2 && 
-            (decryptedBytes[0] & 0xff) == 0x1f && 
-            (decryptedBytes[1] & 0xff) == 0x8b) {
-            
-            // 解压缩 gzip 数据
-            return decompressGzip(decryptedBytes);
-        } else {
-            // 如果不是压缩数据，直接返回UTF-8字符串
-            return new String(decryptedBytes, StandardCharsets.UTF_8);
-        }
-    }
-    
-    /**
-     * 解压缩 gzip 数据
-     * 
-     * @param compressedData 压缩数据
-     * @return 解压后的字符串
-     */
-    public static String decompressGzip(byte[] compressedData) throws IOException {
-        try (GZIPInputStream gzipStream = new GZIPInputStream(new ByteArrayInputStream(compressedData));
-             InputStreamReader reader = new InputStreamReader(gzipStream, StandardCharsets.UTF_8)) {
-            
-            StringBuilder result = new StringBuilder();
-            char[] buffer = new char[1024];
-            int charsRead;
-            
-            while ((charsRead = reader.read(buffer)) != -1) {
-                result.append(buffer, 0, charsRead);
-            }
-            
-            return result.toString();
-        }
+        return GzipUtils.decompressGzipResponse(decryptedBytes);
     }
 
     /**

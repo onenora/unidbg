@@ -1,10 +1,13 @@
 package com.mengying.fqnovel.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.util.List;
 
 /**
  * 搜索响应 DTO（仅保留当前接口链路需要字段）
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class FQSearchResponse {
 
     private List<BookItem> books;
@@ -12,6 +15,7 @@ public class FQSearchResponse {
     private Boolean hasMore;
     private String searchId;
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class BookItem {
         private String bookId;
         private String bookName;

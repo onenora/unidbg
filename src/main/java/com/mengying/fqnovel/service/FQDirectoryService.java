@@ -1,12 +1,10 @@
 package com.mengying.fqnovel.service;
 
-import com.mengying.fqnovel.config.FQApiProperties;
 import com.mengying.fqnovel.config.FQDownloadProperties;
 import com.mengying.fqnovel.config.FQConstants;
 import com.mengying.fqnovel.dto.FQDirectoryRequest;
 import com.mengying.fqnovel.dto.FQDirectoryResponse;
 import com.mengying.fqnovel.dto.FQNovelResponse;
-import com.mengying.fqnovel.dto.FqVariable;
 import com.mengying.fqnovel.utils.FQApiUtils;
 import com.mengying.fqnovel.utils.FQDirectoryResponseTransformer;
 import com.mengying.fqnovel.utils.LocalCacheFactory;
@@ -35,7 +33,6 @@ public class FQDirectoryService {
 
     private static final Logger log = LoggerFactory.getLogger(FQDirectoryService.class);
 
-    private final FQApiProperties fqApiProperties;
     private final FQApiUtils fqApiUtils;
     private final FQDownloadProperties downloadProperties;
     private final ObjectMapper objectMapper;
@@ -47,14 +44,12 @@ public class FQDirectoryService {
     private final ConcurrentHashMap<String, CompletableFuture<FQNovelResponse<FQDirectoryResponse>>> inflightDirectory = new ConcurrentHashMap<>();
 
     public FQDirectoryService(
-        FQApiProperties fqApiProperties,
         FQApiUtils fqApiUtils,
         FQDownloadProperties downloadProperties,
         ObjectMapper objectMapper,
         UpstreamSignedRequestService upstreamSignedRequestService,
         @Qualifier("applicationTaskExecutor") Executor taskExecutor
     ) {
-        this.fqApiProperties = fqApiProperties;
         this.fqApiUtils = fqApiUtils;
         this.downloadProperties = downloadProperties;
         this.objectMapper = objectMapper;
@@ -103,9 +98,8 @@ public class FQDirectoryService {
                 return FQNovelResponse.error("目录请求不能为空");
             }
 
-            FqVariable var = new FqVariable(fqApiProperties);
             String url = fqApiUtils.getSearchApiBaseUrl() + FQConstants.Search.DIRECTORY_ALL_ITEMS_PATH;
-            Map<String, String> params = fqApiUtils.buildDirectoryParams(var, directoryRequest);
+            Map<String, String> params = fqApiUtils.buildDirectoryParams(directoryRequest);
             String fullUrl = fqApiUtils.buildUrlWithParams(url, params);
 
             UpstreamSignedRequestService.UpstreamJsonResult upstream = upstreamSignedRequestService.executeSignedJsonGetOrLogFailure(

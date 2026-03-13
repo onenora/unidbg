@@ -144,7 +144,14 @@ public class FQChapterPrefetchService {
                         return FQNovelResponse.<FQNovelChapterInfo>error("未找到章节数据");
                     }
 
-                    ItemContent itemContent = dataMap.getOrDefault(chapterId, dataMap.values().iterator().next());
+                    ItemContent itemContent = dataMap.get(chapterId);
+                    if (itemContent == null) {
+                        log.warn("单章兜底请求未返回目标章节 - bookId: {}, chapterId: {}",
+                            bookId, chapterId);
+                        return FQNovelResponse.<FQNovelChapterInfo>error(
+                            "获取章节内容失败: 上游未返回目标章节 " + chapterId
+                        );
+                    }
                     try {
                         FQNovelChapterInfo info = chapterContentBuilder.buildChapterInfo(bookId, chapterId, itemContent);
                         cacheChapter(bookId, chapterId, info);
@@ -467,10 +474,8 @@ public class FQChapterPrefetchService {
         if (!Texts.hasText(reason)) {
             return false;
         }
-        return reason.contains("章节内容为空/过短")
-            || reason.contains("章节内容为空")
-            || reason.contains("upstream item code=")
-            || reason.contains("Encrypted data too short");
+        // 空内容/过短内容通常是瞬时上游异常或风控抖动，不应被负缓存放大。
+        return reason.contains("upstream item code=");
     }
 
 }

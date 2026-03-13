@@ -7,7 +7,6 @@ import com.mengying.fqnovel.utils.ThrottledLogger;
 import com.mengying.fqnovel.dto.FQNovelResponse;
 import com.mengying.fqnovel.dto.FQSearchRequest;
 import com.mengying.fqnovel.dto.FQSearchResponse;
-import com.mengying.fqnovel.dto.FqVariable;
 import com.mengying.fqnovel.utils.FQApiUtils;
 import com.mengying.fqnovel.utils.FQSearchResponseParser;
 import com.mengying.fqnovel.utils.LocalCacheFactory;
@@ -208,7 +207,7 @@ public class FQSearchService {
             FQNovelResponse<FQSearchResponse> firstResponse = performSearchInternal(firstRequest);
             if (!RequestCacheHelper.isResponseSuccess(firstResponse)
                 && UpstreamSignedRequestService.isLikelyRiskControl(firstResponse != null ? firstResponse.message() : null)
-                && deviceRotationService.rotateIfNeeded(REASON_SEARCH_PHASE1_FAIL) != null) {
+                && deviceRotationService.rotateIfNeeded(REASON_SEARCH_PHASE1_FAIL)) {
                 firstResponse = performSearchInternal(firstRequest);
             }
             if (!RequestCacheHelper.isResponseSuccess(firstResponse)) {
@@ -238,7 +237,7 @@ public class FQSearchService {
 
                 searchRetry:
                 for (int deviceAttempt = 0; deviceAttempt < maxDevices; deviceAttempt++) {
-                    if (deviceAttempt > 0 && deviceRotationService.forceRotate(REASON_SEARCH_NO_SEARCH_ID) == null) {
+                    if (deviceAttempt > 0 && !deviceRotationService.forceRotate(REASON_SEARCH_NO_SEARCH_ID)) {
                         break;
                     }
                     for (int retryAttempt = 0; retryAttempt < perDeviceRetries; retryAttempt++) {
@@ -344,9 +343,8 @@ public class FQSearchService {
 
     private FQNovelResponse<FQSearchResponse> performSearchInternal(FQSearchRequest searchRequest) {
         try {
-            FqVariable var = new FqVariable(fqApiProperties);
             String url = fqApiUtils.getSearchApiBaseUrl() + FQConstants.Search.TAB_PATH;
-            Map<String, String> params = fqApiUtils.buildSearchParams(var, searchRequest);
+            Map<String, String> params = fqApiUtils.buildSearchParams(searchRequest);
             String fullUrl = fqApiUtils.buildUrlWithParams(url, params);
 
             UpstreamSignedRequestService.UpstreamJsonResult upstream = upstreamSignedRequestService.executeSignedJsonGetOrLogFailure(

@@ -1,6 +1,5 @@
 package com.mengying.fqnovel.service;
 
-import com.mengying.fqnovel.config.FQApiProperties;
 import com.mengying.fqnovel.config.FQDownloadProperties;
 import com.mengying.fqnovel.config.FQConstants;
 import com.mengying.fqnovel.utils.ThrottledLogger;
@@ -10,7 +9,6 @@ import com.mengying.fqnovel.dto.FQNovelBookInfo;
 import com.mengying.fqnovel.dto.FQNovelBookInfoResp;
 import com.mengying.fqnovel.dto.FQNovelResponse;
 import com.mengying.fqnovel.dto.FqIBatchFullResponse;
-import com.mengying.fqnovel.dto.FqVariable;
 import com.mengying.fqnovel.utils.FQApiUtils;
 import com.mengying.fqnovel.utils.ProcessLifecycle;
 import com.mengying.fqnovel.utils.RetryBackoff;
@@ -36,7 +34,6 @@ public class FQNovelService {
     private static final String CHAPTER_FETCH_FAILURE_PREFIX = "获取章节内容失败: ";
 
     private final FQApiUtils fqApiUtils;
-    private final FQApiProperties fqApiProperties;
     private final FQDirectoryService fqDirectoryService;
     private final FQDownloadProperties downloadProperties;
     private final FQDeviceRotationService deviceRotationService;
@@ -49,7 +46,6 @@ public class FQNovelService {
 
     public FQNovelService(
         FQApiUtils fqApiUtils,
-        FQApiProperties fqApiProperties,
         FQDirectoryService fqDirectoryService,
         FQDownloadProperties downloadProperties,
         FQDeviceRotationService deviceRotationService,
@@ -59,7 +55,6 @@ public class FQNovelService {
         @Qualifier("applicationTaskExecutor") Executor taskExecutor
     ) {
         this.fqApiUtils = fqApiUtils;
-        this.fqApiProperties = fqApiProperties;
         this.fqDirectoryService = fqDirectoryService;
         this.downloadProperties = downloadProperties;
         this.deviceRotationService = deviceRotationService;
@@ -97,9 +92,8 @@ public class FQNovelService {
     }
 
     private FQNovelResponse<FqIBatchFullResponse> fetchBatchFullOnce(String itemIds, String bookId, boolean download) throws Exception {
-        FqVariable var = new FqVariable(fqApiProperties);
         String url = fqApiUtils.getBaseUrl() + FQConstants.Chapter.BATCH_FULL_PATH;
-        Map<String, String> params = fqApiUtils.buildBatchFullParams(var, itemIds, bookId, download);
+        Map<String, String> params = fqApiUtils.buildBatchFullParams(itemIds, bookId, download);
         String fullUrl = fqApiUtils.buildUrlWithParams(url, params);
 
         UpstreamSignedRequestService.UpstreamRawResult upstream =

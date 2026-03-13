@@ -150,7 +150,7 @@ public class AutoRestartService {
                     return true;
                 });
                 rotateOk = runSelfHealStep("切换设备失败", () ->
-                    deviceRotationService.forceRotate(selfHealReason) != null
+                    deviceRotationService.forceRotate(selfHealReason)
                 );
             } finally {
                 healing.set(false);
