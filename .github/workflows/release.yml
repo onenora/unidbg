@@ -63,13 +63,23 @@ jobs:
 
       - name: Create GitHub Release
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        uses: softprops/action-gh-release@v2.5.0
-        with:
-          tag_name: ${{ github.ref_name }}
-          target_commitish: ${{ github.sha }}
-          files: |
-            target/fqnovel.jar
-            target/fqnovel.jar.sha256
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG_NAME="${GITHUB_REF_NAME}"
+          TARGET="target/fqnovel.jar"
+          CHECKSUM="target/fqnovel.jar.sha256"
+
+          if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+            gh release upload "${TAG_NAME}" "${TARGET}" "${CHECKSUM}" --clobber
+          else
+            gh release create "${TAG_NAME}" "${TARGET}" "${CHECKSUM}" \
+              --target "${GITHUB_SHA}" \
+              --title "${TAG_NAME}"
+          fi
 
       - name: Set up Docker Buildx
         if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
