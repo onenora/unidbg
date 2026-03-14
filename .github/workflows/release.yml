@@ -36,24 +36,7 @@ jobs:
           set -euo pipefail
 
           MAVEN_VERSION="$(
-            curl -fsSL https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/maven-metadata.xml |
-            python3 -c '
-import sys
-import xml.etree.ElementTree as ET
-
-root = ET.parse(sys.stdin).getroot()
-versions = []
-for node in root.findall("./versioning/versions/version"):
-    text = (node.text or "").strip()
-    parts = text.split(".")
-    if text.startswith("3.") and len(parts) == 3 and all(part.isdigit() for part in parts):
-        versions.append(tuple(int(part) for part in parts))
-
-if not versions:
-    raise SystemExit("No stable Maven 3 release found")
-
-print(".".join(str(part) for part in max(versions)))
-'
+            python3 -c "import urllib.request, xml.etree.ElementTree as ET; root = ET.fromstring(urllib.request.urlopen('https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/maven-metadata.xml').read()); versions = [tuple(int(part) for part in text.split('.')) for node in root.findall('./versioning/versions/version') for text in [(node.text or '').strip()] if text.startswith('3.') and len(text.split('.')) == 3 and all(part.isdigit() for part in text.split('.'))]; print('.'.join(str(part) for part in max(versions))) if versions else (_ for _ in ()).throw(SystemExit('No stable Maven 3 release found'))"
           )"
 
           ARCHIVE="apache-maven-${MAVEN_VERSION}-bin.tar.gz"
