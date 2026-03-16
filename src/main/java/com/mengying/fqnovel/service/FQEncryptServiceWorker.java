@@ -18,8 +18,8 @@ public class FQEncryptServiceWorker {
     private static final Logger log = LoggerFactory.getLogger(FQEncryptServiceWorker.class);
 
     private static final AtomicLong RESET_EPOCH = new AtomicLong(0L);
-    private static final AtomicLong LAST_RESET_REQUEST_AT_MS = new AtomicLong(0L);
-    private static final AtomicLong LAST_UPSTREAM_EMPTY_RESET_REQUEST_AT_MS = new AtomicLong(0L);
+    private static long lastResetRequestAtMs = 0L;
+    private static long lastUpstreamEmptyResetRequestAtMs = 0L;
     private static volatile long RESET_COOLDOWN_MS = 2000L;
     private static volatile long UPSTREAM_EMPTY_RESET_COOLDOWN_MS = 8000L;
     private final FQEncryptService signer;
@@ -39,17 +39,17 @@ public class FQEncryptServiceWorker {
         }
 
         long now = System.currentTimeMillis();
-        if (isWithinCooldown(LAST_RESET_REQUEST_AT_MS.get(), now, RESET_COOLDOWN_MS)) {
+        if (isWithinCooldown(lastResetRequestAtMs, now, RESET_COOLDOWN_MS)) {
             return RESET_EPOCH.get();
         }
         if (isUpstreamEmptyReset(reason)
-            && isWithinCooldown(LAST_UPSTREAM_EMPTY_RESET_REQUEST_AT_MS.get(), now, UPSTREAM_EMPTY_RESET_COOLDOWN_MS)) {
+            && isWithinCooldown(lastUpstreamEmptyResetRequestAtMs, now, UPSTREAM_EMPTY_RESET_COOLDOWN_MS)) {
             return RESET_EPOCH.get();
         }
 
-        LAST_RESET_REQUEST_AT_MS.set(now);
+        lastResetRequestAtMs = now;
         if (isUpstreamEmptyReset(reason)) {
-            LAST_UPSTREAM_EMPTY_RESET_REQUEST_AT_MS.set(now);
+            lastUpstreamEmptyResetRequestAtMs = now;
         }
 
         long epoch = RESET_EPOCH.incrementAndGet();

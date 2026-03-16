@@ -1,13 +1,9 @@
 package com.mengying.fqnovel.utils;
 
-import java.util.regex.Pattern;
-
 /**
  * 轻量字符串工具，统一空白判断和回退取值。
  */
 public final class Texts {
-
-    private static final Pattern DIGITS_PATTERN = Pattern.compile("^\\d+$");
 
     private Texts() {
     }
@@ -49,7 +45,16 @@ public final class Texts {
     }
 
     public static boolean isDigits(String value) {
-        return hasText(value) && DIGITS_PATTERN.matcher(value).matches();
+        if (value == null || value.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                return false;
+            }
+        }
+        return true;
     }
 
     public static String defaultIfBlank(String value, String defaultValue) {

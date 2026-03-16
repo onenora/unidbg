@@ -16,7 +16,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import javax.sql.DataSource;
 import java.net.URI;
 import java.net.URLDecoder;
-import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -42,16 +41,16 @@ public class FQCachePostgresConfig {
         }
 
         ResolvedConnection resolved = resolveConnection(rawUrl);
-        if (!Texts.hasText(resolved.getUsername())) {
+        if (!Texts.hasText(resolved.username())) {
             throw new IllegalStateException("DB_URL 无效：缺少用户名（格式应为 postgresql://user:pass@host:port/db）");
         }
 
         HikariConfig hikari = new HikariConfig();
         hikari.setPoolName("fq-pg-cache");
         hikari.setDriverClassName("org.postgresql.Driver");
-        hikari.setJdbcUrl(resolved.getJdbcUrl());
-        hikari.setUsername(resolved.getUsername());
-        hikari.setPassword(resolved.getPassword());
+        hikari.setJdbcUrl(resolved.jdbcUrl());
+        hikari.setUsername(resolved.username());
+        hikari.setPassword(resolved.password());
 
         int maxPoolSize = Math.max(1, properties.getMaximumPoolSize());
         int minIdle = Math.max(0, Math.min(properties.getMinimumIdle(), maxPoolSize));
@@ -147,37 +146,11 @@ public class FQCachePostgresConfig {
         if (value == null) {
             return null;
         }
-        try {
-            // URLDecoder 会将 '+' 解释为空格，这里先转义为 %2B，避免密码/用户名中 '+' 被误改。
-            return URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8.name());
-        } catch (UnsupportedEncodingException e) {
-            return value;
-        }
+        // URLDecoder 会将 '+' 解释为空格，这里先转义为 %2B，避免密码/用户名中 '+' 被误改。
+        return URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8);
     }
 
-    private static final class ResolvedConnection {
-        private final String jdbcUrl;
-        private final String username;
-        private final String password;
-
-        private ResolvedConnection(String jdbcUrl, String username, String password) {
-            this.jdbcUrl = jdbcUrl;
-            this.username = username;
-            this.password = password;
-        }
-
-        private String getJdbcUrl() {
-            return jdbcUrl;
-        }
-
-        private String getUsername() {
-            return username;
-        }
-
-        private String getPassword() {
-            return password;
-        }
-    }
+    private record ResolvedConnection(String jdbcUrl, String username, String password) {}
 
     /**
      * 仅当 fq.cache.postgres.url 有效时启用 PostgreSQL 章节缓存组件。

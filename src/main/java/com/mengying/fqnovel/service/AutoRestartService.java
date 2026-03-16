@@ -46,7 +46,7 @@ public class AutoRestartService {
     private volatile long lastSelfHealAtMs = 0L;
     private final AtomicBoolean restarting = new AtomicBoolean(false);
 
-    public void recordSuccess() {
+    public synchronized void recordSuccess() {
         errorCount.set(0);
         windowStartMs = 0L;
         restarting.set(false);
@@ -58,17 +58,19 @@ public class AutoRestartService {
         }
 
         long now = System.currentTimeMillis();
-        long windowMs = autoRestartWindowMs();
-        long minIntervalMs = autoRestartMinIntervalMs();
         int threshold = autoRestartThreshold();
 
-        long start = windowStartMs;
-        if (start == 0L || now - start > windowMs) {
-            windowStartMs = now;
-            errorCount.set(0);
+        int count;
+        synchronized (this) {
+            long windowMs = autoRestartWindowMs();
+            long start = windowStartMs;
+            if (start == 0L || now - start > windowMs) {
+                windowStartMs = now;
+                errorCount.set(0);
+            }
+            count = errorCount.incrementAndGet();
         }
 
-        int count = errorCount.incrementAndGet();
         if (count < threshold) {
             return;
         }
@@ -81,6 +83,7 @@ public class AutoRestartService {
             return;
         }
 
+        long minIntervalMs = autoRestartMinIntervalMs();
         if (now - lastRestartAtMs < minIntervalMs) {
             return;
         }

@@ -202,10 +202,6 @@ public class FQNovelService {
         };
     }
 
-    private static boolean isSuccessWithData(FQNovelResponse<?> response) {
-        return RequestCacheHelper.isResponseSuccessWithData(response);
-    }
-
     private static String directoryFailureMessage(FQNovelResponse<?> response) {
         if (response == null) {
             return DIRECTORY_FAILURE_PREFIX + "空响应";
@@ -234,7 +230,7 @@ public class FQNovelService {
 
         return fqDirectoryService.getBookDirectory(directoryRequest)
             .thenApply(directoryResponse -> {
-                if (!isSuccessWithData(directoryResponse)) {
+                if (!RequestCacheHelper.isResponseSuccessWithData(directoryResponse)) {
                     return FQNovelResponse.<FQNovelBookInfo>error(directoryFailureMessage(directoryResponse));
                 }
                 return buildBookInfoFromDirectoryData(directoryResponse.data(), trimmedBookId);

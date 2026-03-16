@@ -28,11 +28,9 @@ public class FQEncryptService {
     private final UnidbgProperties properties;
     private final ReentrantLock lock = new ReentrantLock();
     private volatile IdleFQ idleFQ;
-    private final ObjectMapper objectMapper;
 
     public FQEncryptService(UnidbgProperties properties) {
         this.properties = properties;
-        this.objectMapper = SHARED_OBJECT_MAPPER;
         this.idleFQ = createIdleFq();
         log.info("签名服务初始化完成");
     }
@@ -45,13 +43,23 @@ public class FQEncryptService {
         lock.lock();
         try {
             IdleFQ old = this.idleFQ;
-            this.idleFQ = createIdleFq();
-            if (old != null) {
-                try {
-                    old.destroy();
-                } catch (Exception ignored) {
-                    // ignore
-                }
+            IdleFQ replacement;
+            boolean oldDestroyedForRetry = false;
+
+            try {
+                replacement = createIdleFq();
+            } catch (OutOfMemoryError oom) {
+                // 在容器内存偏紧时，先销毁旧实例再重试一次，避免短时间双 signer 共存放大内存峰值。
+                log.warn("重置签名服务时创建新实例内存不足，先释放旧实例后重试: reason={}", reason, oom);
+                this.idleFQ = null;
+                destroySignerQuietly(old);
+                oldDestroyedForRetry = true;
+                replacement = createIdleFq();
+            }
+
+            this.idleFQ = replacement;
+            if (!oldDestroyedForRetry) {
+                destroySignerQuietly(old);
             }
             log.warn("签名服务已重置，reason={}", reason);
         } finally {
@@ -116,9 +124,7 @@ public class FQEncryptService {
         if (signer != null) {
             return signer;
         }
-        if (this.idleFQ == null) {
-            this.idleFQ = createIdleFq();
-        }
+        this.idleFQ = createIdleFq();
         return this.idleFQ;
     }
 
@@ -154,7 +160,7 @@ public class FQEncryptService {
         // 1) JSON 格式：{"X-Argus":"...","X-Khronos":"..."}
         if (normalized.startsWith("{") && normalized.endsWith("}")) {
             try {
-                Map<String, String> jsonMap = objectMapper.readValue(normalized, new TypeReference<Map<String, String>>() {});
+                Map<String, String> jsonMap = SHARED_OBJECT_MAPPER.readValue(normalized, new TypeReference<Map<String, String>>() {});
                 return jsonMap != null ? new HashMap<>(jsonMap) : Map.of();
             } catch (Exception ignored) {
                 // 继续按行格式解析
@@ -340,5 +346,16 @@ public class FQEncryptService {
         TempFileUtils.cleanup();
 
         log.info("签名服务资源释放完成");
+    }
+
+    private static void destroySignerQuietly(IdleFQ signer) {
+        if (signer == null) {
+            return;
+        }
+        try {
+            signer.destroy();
+        } catch (Exception ignored) {
+            // ignore
+        }
     }
 }

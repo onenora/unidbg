@@ -6,7 +6,6 @@ import com.mengying.fqnovel.dto.FQNovelRequest;
 import com.mengying.fqnovel.dto.FQNovelResponse;
 import com.mengying.fqnovel.service.FQChapterPrefetchService;
 import com.mengying.fqnovel.service.FQNovelService;
-import com.mengying.fqnovel.utils.Texts;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -47,13 +46,7 @@ public class FQNovelController {
         if (log.isDebugEnabled()) {
             log.debug("获取书籍信息 - bookId: {}", bookId);
         }
-
-        String normalizedBookId = Texts.trimToNull(bookId);
-        if (!Texts.isDigits(normalizedBookId)) {
-            return badRequest("书籍ID必须为纯数字");
-        }
-
-        return fqNovelService.getBookInfo(normalizedBookId);
+        return fqNovelService.getBookInfo(bookId);
     }
 
     /**
@@ -68,31 +61,14 @@ public class FQNovelController {
     public CompletableFuture<FQNovelResponse<FQNovelChapterInfo>> getChapterContent(
             @PathVariable String bookId,
             @PathVariable String chapterId) {
-        
+
         if (log.isDebugEnabled()) {
             log.debug("获取章节内容 - bookId: {}, chapterId: {}", bookId, chapterId);
         }
 
-        String normalizedBookId = Texts.trimToNull(bookId);
-        if (!Texts.isDigits(normalizedBookId)) {
-            return badRequest("书籍ID必须为纯数字");
-        }
-
-        String normalizedChapterId = Texts.trimToNull(chapterId);
-        if (!Texts.isDigits(normalizedChapterId)) {
-            return badRequest("章节ID必须为纯数字");
-        }
-
-        // 构建请求对象
         FQNovelRequest request = new FQNovelRequest();
-        request.setBookId(normalizedBookId);
-        request.setChapterId(normalizedChapterId);
-
-        // 单章接口容易触发风控：这里做目录预取 + 缓存，减少上游调用次数
+        request.setBookId(bookId);
+        request.setChapterId(chapterId);
         return fqChapterPrefetchService.getChapterContent(request);
-    }
-
-    private static <T> CompletableFuture<FQNovelResponse<T>> badRequest(String message) {
-        return CompletableFuture.completedFuture(FQNovelResponse.error(message));
     }
 }
