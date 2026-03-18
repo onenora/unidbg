@@ -8,6 +8,7 @@ import com.mengying.fqnovel.dto.FQNovelRequest;
 import com.mengying.fqnovel.dto.FQNovelResponse;
 import com.mengying.fqnovel.dto.ItemContent;
 import com.mengying.fqnovel.utils.LocalCacheFactory;
+import com.mengying.fqnovel.utils.ThrottledLogger;
 import com.mengying.fqnovel.utils.Texts;
 import com.github.benmanes.caffeine.cache.Cache;
 import org.slf4j.Logger;
@@ -60,7 +61,9 @@ public class FQChapterPrefetchService {
 
     private Cache<String, FQNovelChapterInfo> chapterCache;
     private Cache<String, String> chapterNegativeCache;
+    private Cache<String, String> chapterRetryBackoffCache;
     private Cache<String, DirectoryIndex> directoryCache;
+    private ThrottledLogger chapterFailureThrottledLog = new ThrottledLogger(0L);
     private final ConcurrentHashMap<String, CompletableFuture<Void>> inflightPrefetch = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<DirectoryIndex>> inflightDirectory = new ConcurrentHashMap<>();
 
@@ -85,12 +88,16 @@ public class FQChapterPrefetchService {
         int chapterMax = Math.max(1, downloadProperties.getCache().getChapterMaxEntries());
         long chapterTtl = downloadProperties.getCache().getChapterTtlMs();
         long chapterNegativeTtl = Math.max(0L, downloadProperties.getCache().getChapterNegativeTtlMs());
+        long chapterFailureLogCooldown = Math.max(0L, downloadProperties.getCache().getChapterFailureLogCooldownMs());
+        long chapterEmptyRetryBackoff = Math.max(0L, downloadProperties.getCache().getChapterEmptyRetryBackoffMs());
         int dirMax = Math.max(MIN_DIRECTORY_CACHE_MAX_ENTRIES, chapterMax / 10);
         long dirTtl = downloadProperties.getCache().getApiDirectoryTtlMs();
 
         this.chapterCache = LocalCacheFactory.build(chapterMax, chapterTtl);
         this.chapterNegativeCache = chapterNegativeTtl > 0 ? LocalCacheFactory.build(chapterMax, chapterNegativeTtl) : null;
+        this.chapterRetryBackoffCache = chapterEmptyRetryBackoff > 0 ? LocalCacheFactory.build(chapterMax, chapterEmptyRetryBackoff) : null;
         this.directoryCache = LocalCacheFactory.build(dirMax, dirTtl);
+        this.chapterFailureThrottledLog = new ThrottledLogger(chapterFailureLogCooldown);
     }
 
     public CompletableFuture<FQNovelResponse<FQNovelChapterInfo>> getChapterContent(FQNovelRequest request) {
@@ -122,6 +129,11 @@ public class FQChapterPrefetchService {
         String cachedFailure = getCachedChapterFailure(bookId, chapterId);
         if (cachedFailure != null) {
             return errorFuture("获取章节内容失败: " + cachedFailure);
+        }
+
+        String backoffFailure = getChapterRetryBackoffFailure(bookId, chapterId);
+        if (backoffFailure != null) {
+            return errorFuture("获取章节内容失败: " + backoffFailure);
         }
 
         // 预取：优先在目录中定位章节顺序，拉取后缓存（非阻塞链式调用，避免线程池互等死锁）
@@ -157,7 +169,7 @@ public class FQChapterPrefetchService {
                         cacheChapter(bookId, chapterId, info);
                         return FQNovelResponse.success(info);
                     } catch (Exception e) {
-                        cacheChapterFailure(bookId, chapterId, e.getMessage());
+                        recordChapterFailure(bookId, chapterId, e.getMessage());
                         throw new RuntimeException(e);
                     }
                 });
@@ -165,10 +177,9 @@ public class FQChapterPrefetchService {
             .exceptionally(e -> {
                 Throwable t = unwrapCompletionException(e);
                 String msg = exceptionMessage(t);
-                cacheChapterFailure(bookId, chapterId, msg);
-                if (msg.contains("Encrypted data too short") || msg.contains("章节内容为空/过短") || msg.contains("upstream item code=")) {
-                    log.warn("单章获取失败 - bookId: {}, chapterId: {}, reason={}", bookId, chapterId, msg);
-                    log.debug("单章获取失败详情 - bookId: {}, chapterId: {}", bookId, chapterId, t);
+                recordChapterFailure(bookId, chapterId, msg);
+                if (isChapterWarnLevelFailure(msg)) {
+                    logChapterWarnThrottled(bookId, chapterId, msg, t);
                 } else {
                     log.error("单章获取失败 - bookId: {}, chapterId: {}", bookId, chapterId, t);
                 }
@@ -286,7 +297,7 @@ public class FQChapterPrefetchService {
                         FQNovelChapterInfo info = chapterContentBuilder.buildChapterInfo(bookId, itemId, content);
                         cacheChapter(bookId, itemId, info);
                     } catch (Exception e) {
-                        cacheChapterFailure(bookId, itemId, e.getMessage());
+                        recordChapterFailure(bookId, itemId, e.getMessage());
                         log.debug("预取章节处理失败 - bookId: {}, itemId: {}", bookId, itemId, e);
                     }
                 }
@@ -398,6 +409,7 @@ public class FQChapterPrefetchService {
         if (persisted != null) {
             chapterCache.put(cacheKey(bookId, chapterId), persisted);
             evictChapterFailure(bookId, chapterId);
+            evictChapterRetryBackoff(bookId, chapterId);
         }
         return persisted;
     }
@@ -409,6 +421,7 @@ public class FQChapterPrefetchService {
 
         chapterCache.put(cacheKey(bookId, chapterId), chapterInfo);
         evictChapterFailure(bookId, chapterId);
+        evictChapterRetryBackoff(bookId, chapterId);
 
         PgChapterCacheService pgCacheService = pgChapterCacheServiceProvider.getIfAvailable();
         if (pgCacheService != null) {
@@ -442,6 +455,25 @@ public class FQChapterPrefetchService {
         chapterNegativeCache.put(cacheKey(bookId, chapterId), normalized);
     }
 
+    private String getChapterRetryBackoffFailure(String bookId, String chapterId) {
+        if (!isChapterRetryBackoffEligible(bookId, chapterId)) {
+            return null;
+        }
+        String reason = chapterRetryBackoffCache.getIfPresent(cacheKey(bookId, chapterId));
+        return Texts.hasText(reason) ? reason : null;
+    }
+
+    private void cacheChapterRetryBackoff(String bookId, String chapterId, String reason) {
+        if (!isChapterRetryBackoffEligible(bookId, chapterId)) {
+            return;
+        }
+        String normalized = normalizeFailureReason(reason);
+        if (!isChapterRetryBackoffReason(normalized)) {
+            return;
+        }
+        chapterRetryBackoffCache.put(cacheKey(bookId, chapterId), normalized);
+    }
+
     private void evictChapterFailure(String bookId, String chapterId) {
         if (!isChapterNegativeCacheEligible(bookId, chapterId)) {
             return;
@@ -449,8 +481,19 @@ public class FQChapterPrefetchService {
         chapterNegativeCache.invalidate(cacheKey(bookId, chapterId));
     }
 
+    private void evictChapterRetryBackoff(String bookId, String chapterId) {
+        if (!isChapterRetryBackoffEligible(bookId, chapterId)) {
+            return;
+        }
+        chapterRetryBackoffCache.invalidate(cacheKey(bookId, chapterId));
+    }
+
     private boolean isChapterNegativeCacheEligible(String bookId, String chapterId) {
         return chapterNegativeCache != null && Texts.hasText(bookId) && Texts.hasText(chapterId);
+    }
+
+    private boolean isChapterRetryBackoffEligible(String bookId, String chapterId) {
+        return chapterRetryBackoffCache != null && Texts.hasText(bookId) && Texts.hasText(chapterId);
     }
 
     private static String normalizeFailureReason(String reason) {
@@ -476,6 +519,34 @@ public class FQChapterPrefetchService {
         }
         // 空内容/过短内容通常是瞬时上游异常或风控抖动，不应被负缓存放大。
         return reason.contains("upstream item code=");
+    }
+
+    private void recordChapterFailure(String bookId, String chapterId, String reason) {
+        cacheChapterFailure(bookId, chapterId, reason);
+        cacheChapterRetryBackoff(bookId, chapterId, reason);
+    }
+
+    private static boolean isChapterRetryBackoffReason(String reason) {
+        if (!Texts.hasText(reason)) {
+            return false;
+        }
+        return reason.contains("章节内容为空/过短") || reason.contains("Encrypted data too short");
+    }
+
+    private static boolean isChapterWarnLevelFailure(String reason) {
+        if (!Texts.hasText(reason)) {
+            return false;
+        }
+        return isChapterRetryBackoffReason(reason) || reason.contains("upstream item code=");
+    }
+
+    private void logChapterWarnThrottled(String bookId, String chapterId, String reason, Throwable throwable) {
+        String throttleKey = "chapter.warn:" + cacheKey(bookId, chapterId) + ":" + normalizeFailureReason(reason);
+        if (!chapterFailureThrottledLog.shouldLog(throttleKey)) {
+            return;
+        }
+        log.warn("单章获取失败 - bookId: {}, chapterId: {}, reason={}", bookId, chapterId, reason);
+        log.debug("单章获取失败详情 - bookId: {}, chapterId: {}", bookId, chapterId, throwable);
     }
 
 }

@@ -2,7 +2,7 @@
 <configuration scan="false">
 
     <property name="LOG_DIR" value="${LOG_DIR:-logs}"/>
-    <property name="CONSOLE_PATTERN" value="%d{HH:mm:ss} %-5level - %msg%n"/>
+    <property name="CONSOLE_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss} %-5level - %msg%n"/>
     <property name="FILE_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level %logger{36} - %msg%n"/>
 
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">

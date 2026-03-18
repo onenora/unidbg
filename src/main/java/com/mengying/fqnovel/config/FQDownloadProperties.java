@@ -170,6 +170,8 @@ public class FQDownloadProperties {
         private int chapterMaxEntries = 2000;
         private long chapterTtlMs = 30 * 60 * 1000L;
         private long chapterNegativeTtlMs = 10 * 60 * 1000L;
+        private long chapterFailureLogCooldownMs = 3 * 60 * 1000L;
+        private long chapterEmptyRetryBackoffMs = 30 * 1000L;
         private boolean chapterIncludeRawContent = false;
         private int searchMaxEntries = 256;
         private long searchTtlMs = 45 * 1000L;
@@ -198,6 +200,22 @@ public class FQDownloadProperties {
 
         public void setChapterNegativeTtlMs(long chapterNegativeTtlMs) {
             this.chapterNegativeTtlMs = chapterNegativeTtlMs;
+        }
+
+        public long getChapterFailureLogCooldownMs() {
+            return chapterFailureLogCooldownMs;
+        }
+
+        public void setChapterFailureLogCooldownMs(long chapterFailureLogCooldownMs) {
+            this.chapterFailureLogCooldownMs = chapterFailureLogCooldownMs;
+        }
+
+        public long getChapterEmptyRetryBackoffMs() {
+            return chapterEmptyRetryBackoffMs;
+        }
+
+        public void setChapterEmptyRetryBackoffMs(long chapterEmptyRetryBackoffMs) {
+            this.chapterEmptyRetryBackoffMs = chapterEmptyRetryBackoffMs;
         }
 
         public boolean isChapterIncludeRawContent() {

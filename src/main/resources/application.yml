@@ -45,6 +45,8 @@ fq:
       chapter-max-entries: 2000
       chapter-ttl-ms: 600000
       chapter-negative-ttl-ms: 600000
+      chapter-failure-log-cooldown-ms: 180000
+      chapter-empty-retry-backoff-ms: 30000
       chapter-include-raw-content: false
       search-max-entries: 256
       search-ttl-ms: 45000
